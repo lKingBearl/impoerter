@@ -5,16 +5,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     parseBtn.addEventListener("click", async () => {
         const url = poeUrlInput.value.trim();
-        resultBox.textContent = "Fetching build data...";
+        if (!url) return;
+
+        resultBox.textContent = "Fetching character model data...";
 
         try {
             const response = await fetch(`/api/parse?url=${encodeURIComponent(url)}`);
             const data = await response.json();
 
-            // Dump the data object
+            // Output the raw, clean JSON directly
             resultBox.innerHTML = `
-                <strong>Data Extracted:</strong>
-                <textarea style="width: 100%; height: 400px;">${JSON.stringify(data, null, 2)}</textarea>
+                <strong>Data Successfully Fetched!</strong><br><br>
+                <textarea style="width: 100%; height: 400px; font-family: monospace; font-size: 13px; background: #f8f9fa;">${JSON.stringify(data, null, 2)}</textarea>
             `;
         } catch (e) {
             resultBox.textContent = "Error: Could not retrieve data.";
