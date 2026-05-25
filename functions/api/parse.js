@@ -2,27 +2,30 @@ export async function onRequest(context) {
     const url = new URL(context.request.url);
     const targetPoeUrl = url.searchParams.get('url');
 
-    if (!targetPoeUrl) {
-        return new Response('Missing URL parameter', { status: 400 });
-    }
+    // Extract the league and character name from the URL to hit the API
+    // Format: /poe2/profile/[account]/[league]/character/[name]
+    const parts = targetPoeUrl.split('/');
+    const league = parts[parts.indexOf('profile') + 2];
+    const characterName = parts[parts.length - 1];
+
+    const apiUrl = `https://poe.ninja/api/data/character?league=${league}&name=${characterName}`;
 
     try {
-        const response = await fetch(targetPoeUrl, {
+        const response = await fetch(apiUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'RSC': '1' // <--- THE MAGIC KEY: Forces the server to return raw JSON chunks instead of HTML
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
         
-        const data = await response.text();
+        const data = await response.json();
 
-        return new Response(data, {
+        return new Response(JSON.stringify(data), {
             headers: { 
-                'Content-Type': 'text/plain',
+                'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*' 
             }
         });
     } catch (err) {
-        return new Response('Error fetching data from poe.ninja', { status: 500 });
+        return new Response(JSON.stringify({ error: 'API Fetch failed' }), { status: 500 });
     }
 }
