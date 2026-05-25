@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        resultBox.innerHTML = "<strong>Reconstructing Next.js Data Stream...</strong>";
+        resultBox.innerHTML = "<strong>Stitching severed data chunks...</strong>";
         resultBox.style.color = "#333";
 
         try {
@@ -23,64 +23,87 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const rawData = await response.text();
-            let bestPayload = null;
-            let maxLength = 0;
 
-            // 1. Reconstruct modern Next.js App Router RSC chunks
+            // 1. Extreme Stitching: Avoid Regex truncation by isolating the exact first and last quotes of every chunk
             let fullRscString = "";
             const splits = rawData.split('self.__next_f.push(');
             for (let i = 1; i < splits.length; i++) {
-                // Safely extract the JavaScript array containing the chunked strings
-                const match = splits[i].match(/^(\[\d+,\s*"(?:\\.|[^"\\])*"\])/);
-                if (match) {
-                    try {
-                        const parsedArray = JSON.parse(match[1]); 
-                        if (parsedArray && typeof parsedArray[1] === 'string') {
-                            // Stitch the severed chunks back together into one giant payload
-                            fullRscString += parsedArray[1]; 
-                        }
-                    } catch(e) {}
+                const startIdx = splits[i].indexOf('"');
+                const endIdx = splits[i].lastIndexOf('"]'); // Ignores inner arrays, locks onto the absolute end of the chunk
+                
+                if (startIdx > -1 && endIdx > startIdx) {
+                    fullRscString += splits[i].substring(startIdx + 1, endIdx);
                 }
             }
 
-            // 2. Once the stream is stitched together, parse it line by line
-            if (fullRscString.length > 0) {
-                const lines = fullRscString.split('\n');
-                for (let line of lines) {
-                    const firstColon = line.indexOf(':');
-                    if (firstColon > -1 && firstColon < 10) {
-                        const content = line.substring(firstColon + 1);
-                        try {
-                            let parsed = JSON.parse(content);
-                            // Next.js double-stringifies some data layers, so we parse it again if needed
-                            if (typeof parsed === 'string') {
-                                try { parsed = JSON.parse(parsed); } catch(e) {}
-                            }
-                            
-                            const str = JSON.stringify(parsed).toLowerCase();
-                            // Locate the specific Path of Exile profile payload
-                            if ((str.includes('life') || str.includes('equipment')) && str.length > maxLength) {
-                                bestPayload = parsed;
-                                maxLength = str.length;
-                            }
-                        } catch(e) {}
+            if (fullRscString.length === 0) {
+                fullRscString = rawData; // Fallback if they aren't using Next.js chunks at all
+            }
+
+            // 2. Extreme Unescaping: Loop through the string until all Next.js stringification layers are permanently stripped
+            let cleanText = fullRscString;
+            let prevLen = 0;
+            while (cleanText.length !== prevLen) {
+                prevLen = cleanText.length;
+                cleanText = cleanText.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '');
+            }
+
+            // 3. The Bracket-Counting Algorithm: Safely extract complete JSON blocks
+            let bestPayload = null;
+            let maxLength = 0;
+            const regex = /\{"/g;
+            let match;
+            
+            while ((match = regex.exec(cleanText)) !== null) {
+                let start = match.index;
+                let end = start + 1;
+                let brackets = 1;
+                let inString = false;
+                let isValid = true;
+                
+                while (end < cleanText.length && brackets > 0) {
+                    let char = cleanText[end];
+                    let prevChar = cleanText[end-1];
+                    
+                    if (char === '"' && prevChar !== '\\') inString = !inString;
+                    
+                    if (!inString) {
+                        if (char === '{') brackets++;
+                        else if (char === '}') brackets--;
+                    }
+                    end++;
+                    
+                    if (end - start > 3000000) { isValid = false; break; } 
+                }
+                
+                if (brackets === 0 && isValid) {
+                    let jsonString = cleanText.substring(start, end);
+                    let lowerStr = jsonString.toLowerCase();
+                    
+                    // Look for core PoE indicators inside the extracted object
+                    if (lowerStr.includes('"life"') && lowerStr.includes('"equipment"')) {
+                        if (jsonString.length > maxLength) {
+                            try {
+                                bestPayload = JSON.parse(jsonString);
+                                maxLength = jsonString.length;
+                            } catch(e) {}
+                        }
                     }
                 }
             }
 
-            // 3. Fallback: Check for older Next.js standard data blocks
+            // 4. Ultimate Fallback: Dump the raw unescaped string if poe.ninja renamed their variables
             if (!bestPayload) {
-                const nextDataMatch = rawData.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-                if (nextDataMatch) {
-                    try { bestPayload = JSON.parse(nextDataMatch[1]); } catch(e) {}
-                }
+                resultBox.innerHTML = `
+                    <strong>Data successfully stitched, but exact keys not found!</strong><br><br>
+                    The server sent the data, but poe.ninja might have changed their variable names (e.g., from "life" to "base_hp"). 
+                    Here is the raw, unescaped payload. You can copy this directly into your local Ollama setup to have it read the data manually:<br><br>
+                    <textarea style="width: 100%; height: 400px; font-family: monospace; font-size: 12px; background: #ffebee; border: 1px solid #e74c3c;">${cleanText.substring(0, 50000).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</textarea>
+                `;
+                return;
             }
 
-            if (!bestPayload) {
-                throw new Error("Could not reconstruct character JSON. poe.ninja may be hiding the data differently.");
-            }
-
-            // 4. Filter down to a clean object optimized for local model ingestion
+            // 5. Filter down to a clean AI object
             const cleanStats = extractAIStats(bestPayload);
 
             resultBox.innerHTML = `
@@ -95,7 +118,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Recursively scans the payload for specific combat stats and gear
     function extractAIStats(data) {
         let results = { Attributes: {}, Defensive: {}, Simulated: {}, Gear_Equipped: [] };
 
