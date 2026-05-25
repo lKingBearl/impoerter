@@ -1,53 +1,96 @@
 export async function onRequest(context) {
 
     const requestUrl = new URL(context.request.url);
-    const apiUrl = requestUrl.searchParams.get("url");
+    const inputUrl = requestUrl.searchParams.get("url");
 
-    if (!apiUrl) {
+    if (!inputUrl) {
         return json({
-            error: "Missing API URL"
+            error: "Missing URL"
         }, 400);
     }
 
     try {
 
-        const response = await fetch(apiUrl, {
-            headers: {
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                "Referer": "https://poe.ninja/",
-                "Origin": "https://poe.ninja"
+        let apiUrl = inputUrl;
+
+        // If normal profile URL pasted
+        if (
+            inputUrl.includes("/profile/") &&
+            !inputUrl.includes("/api/")
+        ) {
+
+            // Fetch profile HTML SERVER SIDE
+            const htmlResponse = await fetch(inputUrl, {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0"
+                }
+            });
+
+            const html =
+                await htmlResponse.text();
+
+            // Find API model endpoint
+            const match =
+                html.match(
+                    /\/poe2\/api\/profile\/characters\/.*?\/model\/\d+/
+                );
+
+            if (!match) {
+
+                return json({
+                    error:
+                        "Could not locate model API URL"
+                }, 500);
             }
-        });
 
-        // DEBUGGING RESPONSE
-        const text = await response.text();
+            apiUrl =
+                "https://poe.ninja" +
+                match[0];
+        }
 
-        // Try parsing JSON safely
+        // Fetch actual JSON
+        const apiResponse =
+            await fetch(apiUrl, {
+                headers: {
+                    "Accept":
+                        "application/json",
+                    "User-Agent":
+                        "Mozilla/5.0",
+                    "Referer":
+                        "https://poe.ninja/"
+                }
+            });
+
+        const text =
+            await apiResponse.text();
+
         let rawData;
 
         try {
-            rawData = JSON.parse(text);
+
+            rawData =
+                JSON.parse(text);
+
         } catch {
 
             return json({
-                error: "Response was not JSON",
-                status: response.status,
-                contentType: response.headers.get("content-type"),
-                preview: text.substring(0, 4000)
+                error:
+                    "Response was not JSON",
+                preview:
+                    text.substring(0, 4000)
             }, 500);
         }
 
-        // NORMALIZE DATA
-        const normalized = normalizeCharacter(rawData);
+        const normalized =
+            normalizeCharacter(rawData);
 
         return json(normalized);
 
     } catch (err) {
 
         return json({
-            error: err.message,
-            stack: err.stack
+            error: err.message
         }, 500);
     }
 }
@@ -76,50 +119,36 @@ function normalizeCharacter(data) {
         stats:
             data?.stats || {},
 
-        items: (data?.items || []).map(item => ({
+        items:
+            (data?.items || []).map(item => ({
 
-            slot:
-                item?.inventoryId || null,
+                slot:
+                    item?.inventoryId,
 
-            name:
-                item?.name || null,
+                name:
+                    item?.name,
 
-            baseType:
-                item?.typeLine || null,
+                type:
+                    item?.typeLine,
 
-            rarity:
-                item?.rarity || null,
+                rarity:
+                    item?.rarity,
 
-            itemLevel:
-                item?.ilvl || null,
+                implicits:
+                    item?.implicitMods || [],
 
-            implicits:
-                item?.implicitMods || [],
+                explicits:
+                    item?.explicitMods || [],
 
-            explicits:
-                item?.explicitMods || [],
+                crafted:
+                    item?.craftedMods || [],
 
-            crafted:
-                item?.craftedMods || [],
+                enchantments:
+                    item?.enchantMods || [],
 
-            enchantments:
-                item?.enchantMods || [],
-
-            fractured:
-                item?.fracturedMods || [],
-
-            properties:
-                item?.properties || [],
-
-            requirements:
-                item?.requirements || [],
-
-            sockets:
-                item?.sockets || [],
-
-            socketedItems:
-                item?.socketedItems || []
-        })),
+                socketedItems:
+                    item?.socketedItems || []
+            })),
 
         passives:
             data?.passives || [],
@@ -139,8 +168,10 @@ function json(data, status = 200) {
         {
             status,
             headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"
+                "Content-Type":
+                    "application/json",
+                "Access-Control-Allow-Origin":
+                    "*"
             }
         }
     );
