@@ -7,19 +7,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const url = poeUrlInput.value.trim();
         if (!url) return;
 
-        resultBox.textContent = "Fetching API data...";
+        resultBox.textContent = "Fetching raw HTML...";
 
         try {
             const response = await fetch(`/api/parse?url=${encodeURIComponent(url)}`);
-            const buildData = await response.json();
+            const rawHtml = await response.text();
 
-            // DUMP THE ENTIRE DATA OBJECT TO THE SCREEN
             resultBox.innerHTML = `
-                <strong>Full API Response (Debug):</strong><br>
-                <textarea style="width: 100%; height: 500px; font-family: monospace; font-size: 12px; background: #fff; padding: 10px;">${JSON.stringify(buildData, null, 2)}</textarea>
+                <strong>Raw HTML Captured:</strong><br>
+                <p>Copy this into your local AI to extract your build stats:</p>
+                <textarea style="width: 100%; height: 500px; font-family: monospace; font-size: 11px;">${rawHtml.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</textarea>
             `;
         } catch (error) {
-            resultBox.textContent = "Error: Could not reach API.";
+            resultBox.textContent = "Error: Could not fetch HTML.";
         }
     });
 });
