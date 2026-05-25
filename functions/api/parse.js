@@ -1,83 +1,155 @@
 export async function onRequest(context) {
 
-    const url = new URL(context.request.url);
-    const targetUrl = url.searchParams.get("url");
+    const requestUrl = new URL(context.request.url);
+    const profileUrl = requestUrl.searchParams.get("url");
 
-    if (!targetUrl) {
-        return new Response(
-            JSON.stringify({
-                error: "Missing URL"
-            }),
-            {
-                status: 400,
-                headers: {
-                    "Content-Type": "application/json"
-                }
-            }
-        );
+    if (!profileUrl) {
+        return json({
+            error: "Missing profile URL"
+        }, 400);
     }
 
     try {
 
-        // Fetch page HTML
-        const response = await fetch(targetUrl, {
+        // Parse poe.ninja URL
+        const parsed = parsePoeNinjaUrl(profileUrl);
+
+        if (!parsed) {
+            return json({
+                error: "Invalid poe.ninja URL"
+            }, 400);
+        }
+
+        const {
+            account,
+            league,
+            character
+        } = parsed;
+
+        // STEP 1:
+        // Get page HTML to discover model ID
+        const htmlResponse = await fetch(profileUrl, {
             headers: {
-                "User-Agent":
-                    "Mozilla/5.0"
+                "User-Agent": "Mozilla/5.0"
             }
         });
 
-        const html = await response.text();
+        const html = await htmlResponse.text();
 
-        // Try extracting Next.js payload
-        const match = html.match(
-            /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/
+        // Find model endpoint in HTML
+        const modelMatch = html.match(
+            /\/api\/profile\/characters\/.*?\/model\/(\d+)/
         );
 
-        if (!match) {
-
-            return new Response(
-                JSON.stringify({
-                    error: "__NEXT_DATA__ not found",
-                    debug:
-                        "Site may use another hydration method"
-                }),
-                {
-                    status: 500,
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
-                }
-            );
+        if (!modelMatch) {
+            return json({
+                error: "Model ID not found"
+            }, 500);
         }
 
-        // Parse hydration JSON
-        const nextData = JSON.parse(match[1]);
+        const modelId = modelMatch[1];
 
-        // TEMPORARY:
-        // Return raw payload first
-        return new Response(
-            JSON.stringify(nextData, null, 2),
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*"
-                }
+        // STEP 2:
+        // Build actual API URL
+        const apiUrl =
+            `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model/${modelId}`;
+
+        // STEP 3:
+        // Fetch actual structured data
+        const apiResponse = await fetch(apiUrl, {
+            headers: {
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0"
             }
-        );
+        });
+
+        const rawData = await apiResponse.json();
+
+        // STEP 4:
+        // Normalize for LLMs
+        const normalized = normalizeCharacter(rawData);
+
+        return json(normalized);
 
     } catch (err) {
 
-        return new Response(
-            JSON.stringify({
-                error: err.message
-            }),
-            {
-                status: 500,
-                headers: {
-                    "Content-Type": "application/json"
-                }
-            }
-        );
+        return json({
+            error: err.message
+        }, 500);
     }
+}
+
+function parsePoeNinjaUrl(url) {
+
+    const match = url.match(
+        /profile\/(.+?)\/(.+?)\/character\/(.+?)(#|$)/
+    );
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        account: match[1],
+        league: match[2],
+        character: match[3]
+    };
+}
+
+function normalizeCharacter(data) {
+
+    return {
+
+        character: {
+            name: data?.character?.name,
+            level: data?.character?.level,
+            class: data?.character?.class
+        },
+
+        defence: {
+            life: data?.stats?.life,
+            mana: data?.stats?.mana,
+            energyShield: data?.stats?.energyShield,
+            movementSpeed: data?.stats?.movementSpeed,
+            armour: data?.stats?.armour,
+            evasion: data?.stats?.evasion
+        },
+
+        resistances: {
+            fire: data?.stats?.fireResistance,
+            cold: data?.stats?.coldResistance,
+            lightning: data?.stats?.lightningResistance,
+            chaos: data?.stats?.chaosResistance
+        },
+
+        items: (data?.items || []).map(item => ({
+            slot: item?.inventoryId,
+            name: item?.name,
+            type: item?.typeLine,
+            rarity: item?.rarity,
+
+            implicits: item?.implicitMods || [],
+            explicits: item?.explicitMods || [],
+
+            socketedItems: item?.socketedItems || []
+        })),
+
+        passives: data?.passives || [],
+
+        skills: data?.skills || []
+    };
+}
+
+function json(data, status = 200) {
+
+    return new Response(
+        JSON.stringify(data, null, 2),
+        {
+            status,
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            }
+        }
+    );
 }
