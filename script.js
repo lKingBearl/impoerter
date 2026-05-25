@@ -5,21 +5,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     parseBtn.addEventListener("click", async () => {
         const url = poeUrlInput.value.trim();
-        if (!url) return;
-
-        resultBox.textContent = "Fetching raw HTML...";
+        resultBox.textContent = "Fetching build data...";
 
         try {
             const response = await fetch(`/api/parse?url=${encodeURIComponent(url)}`);
-            const rawHtml = await response.text();
+            const data = await response.json();
 
+            // Dump the data object
             resultBox.innerHTML = `
-                <strong>Raw HTML Captured:</strong><br>
-                <p>Copy this into your local AI to extract your build stats:</p>
-                <textarea style="width: 100%; height: 500px; font-family: monospace; font-size: 11px;">${rawHtml.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</textarea>
+                <strong>Data Extracted:</strong>
+                <textarea style="width: 100%; height: 400px;">${JSON.stringify(data, null, 2)}</textarea>
             `;
-        } catch (error) {
-            resultBox.textContent = "Error: Could not fetch HTML.";
+        } catch (e) {
+            resultBox.textContent = "Error: Could not retrieve data.";
         }
     });
 });
