@@ -114,4 +114,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (['life', 'energyshield', 'mana', 'armour', 'evasion', 'spirit'].includes(lowerKey)) results.Defensive[key] = val;
                     if (lowerKey.includes('res') && (lowerKey.includes('fire') || lowerKey.includes('cold') || lowerKey.includes('lightning') || lowerKey.includes('chaos'))) results.Defensive[key] = val;
                     if (lowerKey.includes('ehp') || lowerKey.includes('maxhit') || lowerKey.includes('effective')) results.Simulated[key] = val;
-                    if (lowerKey === 'name' && path.includes('item') && typeof val === 'string
+                    if (lowerKey === 'name' && path.includes('item') && typeof val === 'string' && val.length > 2) {
+                        if (!results.Gear_Equipped.includes(val)) results.Gear_Equipped.push(val);
+                    }
+                }
+            }
+        }
+        search(data);
+        return results;
+    }
+});
