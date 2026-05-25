@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoE Build Reader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="page">
+
+        <div class="logo">
+            ⚔️ PoE Build Reader
+            <span class="logo-badge">PoE 2</span>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="parse">Parse Build</button>
+            <button class="tab" data-tab="setup">Setup Guide</button>
+        </div>
+
+        <!-- PARSE TAB -->
+        <div id="panel-parse" class="panel active">
+
+            <div class="notice">
+                <strong>First time?</strong> Head to the <strong>Setup Guide</strong> tab to install the bookmarklet.
+                It lets you paste a normal poe.ninja character page URL instead of hunting through DevTools.
+            </div>
+
+            <div class="card">
+                <div class="status-bar">
+                    <div class="dot" id="status-dot"></div>
+                    <span id="status-text">Paste a poe.ninja URL below, or use the bookmarklet on a character page.</span>
+                </div>
+
+                <div class="input-row">
+                    <input type="text" id="poe-url" placeholder="https://poe.ninja/poe2/profile/..." />
+                    <button class="btn" id="parse-btn">Parse</button>
+                </div>
+            </div>
+
+            <div id="output-area" class="output-area hidden">
+                <div class="card">
+                    <div id="char-header"></div>
+                    <hr class="divider">
+                    <div class="output-header">
+                        <span class="output-label">LLM-ready output</span>
+                        <div class="btn-row">
+                            <button class="btn btn-ghost" id="copy-btn">📋 Copy</button>
+                            <button class="btn btn-ghost" id="download-btn">⬇ Download</button>
+                        </div>
+                    </div>
+                    <textarea id="output-text" class="output-text" readonly></textarea>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SETUP TAB -->
+        <div id="panel-setup" class="panel hidden">
+
+            <div class="card">
+                <h2>Install the bookmarklet</h2>
+
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <div class="step-title">Make sure your bookmarks bar is visible</div>
+                        <div class="step-desc">
+                            In Chrome or Edge press <kbd>Ctrl+Shift+B</kbd>.
+                            In Firefox press <kbd>Ctrl+B</kbd>.
+                            A bar should appear just below your address bar.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <div class="step-title">Drag this button to your bookmarks bar</div>
+                        <div class="step-desc">
+                            Click and hold the button below, drag it up to your bookmarks bar, and let go.
+                            It will appear as a bookmark called "PoE Build Grabber".
+                        </div>
+                        <a id="bookmarklet-link" class="bookmarklet-pill" href="#">⚔️ PoE Build Grabber</a>
+                        <div class="drag-hint">↑ Drag this up to your bookmarks bar</div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <div class="step-title">Go to a character page on poe.ninja</div>
+                        <div class="step-desc">
+                            Navigate to any character — the URL looks like:<br>
+                            <code>poe.ninja/poe2/profile/AccountName/...</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-body">
+                        <div class="step-title">Click the bookmarklet once on the character page</div>
+                        <div class="step-desc">
+                            A yellow banner will appear at the top of the page confirming it's active.
+                            The page will load the character data in the background — the bookmarklet
+                            intercepts it automatically and opens this tool with the result ready.
+                            You don't need to do anything else.
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="card">
+                <h2>How does it work?</h2>
+                <p>
+                    When you visit a character page, poe.ninja makes a hidden background request to fetch
+                    the character's data. The bookmarklet intercepts that request the moment it happens,
+                    grabs the URL, and passes it directly to this tool — so you never need to open
+                    DevTools or find the URL yourself.
+                </p>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
