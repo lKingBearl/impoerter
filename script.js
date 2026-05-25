@@ -12,25 +12,38 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        resultBox.textContent = "Fetching build data via Cloudflare Function...";
+        resultBox.textContent = "Fetching and extracting build data...";
         resultBox.style.color = "#333";
 
         try {
             const response = await fetch(`/api/parse?url=${encodeURIComponent(url)}`);
             
-            // This grabs the exact error code from the server instead of a generic message
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`Status ${response.status} - ${errorText || response.statusText}`);
             }
 
-            const rawData = await response.text();
+            const rawHtml = await response.text();
 
-            resultBox.innerHTML = `
-                <strong>Fetch Successful!</strong><br><br>
-                Raw Data Output (Truncated):<br><br>
-                <textarea style="width: 100%; height: 200px; font-family: monospace;">${rawData.substring(0, 1000)}...</textarea>
-            `;
+            // The regex to find poe.ninja's hidden JSON data block
+            const jsonMatch = rawHtml.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+
+            if (jsonMatch && jsonMatch[1]) {
+                // Convert the raw text back into a usable JavaScript Object
+                const nextData = JSON.parse(jsonMatch[1]);
+                
+                // Isolate the core character properties (ignoring site navigation data)
+                const buildData = nextData.props?.pageProps || nextData;
+
+                // Output the clean JSON
+                resultBox.innerHTML = `
+                    <strong>Extraction Successful!</strong><br><br>
+                    Data isolated and ready for processing:<br><br>
+                    <textarea style="width: 100%; height: 350px; font-family: monospace; font-size: 14px; background: #fff; padding: 10px;">${JSON.stringify(buildData, null, 2)}</textarea>
+                `;
+            } else {
+                throw new Error("Could not locate the data block. poe.ninja may have changed their layout.");
+            }
             
         } catch (error) {
             resultBox.textContent = `Error: ${error.message}`;
