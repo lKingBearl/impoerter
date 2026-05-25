@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        resultBox.innerHTML = "<strong>Downloading and brute-forcing HTML data...</strong>";
+        resultBox.innerHTML = "<strong>Reconstructing Next.js Data Stream...</strong>";
         resultBox.style.color = "#333";
 
         try {
@@ -23,64 +23,64 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const rawData = await response.text();
-
-            // 1. Aggressively unescape the entire HTML document to reveal hidden JSON payloads
-            let cleanText = rawData;
-            for (let i = 0; i < 3; i++) {
-                cleanText = cleanText.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '');
-            }
-
-            // 2. The Bracket-Counting Algorithm: Hunt for valid JSON objects in the raw text
             let bestPayload = null;
             let maxLength = 0;
-            const regex = /\{"/g;
-            let match;
-            
-            while ((match = regex.exec(cleanText)) !== null) {
-                let start = match.index;
-                let end = start + 1;
-                let brackets = 1;
-                let inString = false;
-                let isValid = true;
-                
-                // Count opening and closing brackets to extract complete objects
-                while (end < cleanText.length && brackets > 0) {
-                    let char = cleanText[end];
-                    let prevChar = cleanText[end-1];
-                    
-                    if (char === '"' && prevChar !== '\\') inString = !inString;
-                    
-                    if (!inString) {
-                        if (char === '{') brackets++;
-                        else if (char === '}') brackets--;
-                    }
-                    end++;
-                    
-                    // Failsafe to prevent browser freezing on massive strings
-                    if (end - start > 2000000) { isValid = false; break; } 
-                }
-                
-                if (brackets === 0 && isValid) {
-                    let jsonString = cleanText.substring(start, end);
-                    const lowerJson = jsonString.toLowerCase();
-                    
-                    // Verify the object contains Path of Exile data before parsing
-                    if (lowerJson.includes('"ehp"') || lowerJson.includes('"life"') || lowerJson.includes('"equipment"')) {
-                        if (jsonString.length > maxLength) {
-                            try {
-                                bestPayload = JSON.parse(jsonString);
-                                maxLength = jsonString.length;
-                            } catch(e) {}
+
+            // 1. Reconstruct modern Next.js App Router RSC chunks
+            let fullRscString = "";
+            const splits = rawData.split('self.__next_f.push(');
+            for (let i = 1; i < splits.length; i++) {
+                // Safely extract the JavaScript array containing the chunked strings
+                const match = splits[i].match(/^(\[\d+,\s*"(?:\\.|[^"\\])*"\])/);
+                if (match) {
+                    try {
+                        const parsedArray = JSON.parse(match[1]); 
+                        if (parsedArray && typeof parsedArray[1] === 'string') {
+                            // Stitch the severed chunks back together into one giant payload
+                            fullRscString += parsedArray[1]; 
                         }
+                    } catch(e) {}
+                }
+            }
+
+            // 2. Once the stream is stitched together, parse it line by line
+            if (fullRscString.length > 0) {
+                const lines = fullRscString.split('\n');
+                for (let line of lines) {
+                    const firstColon = line.indexOf(':');
+                    if (firstColon > -1 && firstColon < 10) {
+                        const content = line.substring(firstColon + 1);
+                        try {
+                            let parsed = JSON.parse(content);
+                            // Next.js double-stringifies some data layers, so we parse it again if needed
+                            if (typeof parsed === 'string') {
+                                try { parsed = JSON.parse(parsed); } catch(e) {}
+                            }
+                            
+                            const str = JSON.stringify(parsed).toLowerCase();
+                            // Locate the specific Path of Exile profile payload
+                            if ((str.includes('life') || str.includes('equipment')) && str.length > maxLength) {
+                                bestPayload = parsed;
+                                maxLength = str.length;
+                            }
+                        } catch(e) {}
                     }
+                }
+            }
+
+            // 3. Fallback: Check for older Next.js standard data blocks
+            if (!bestPayload) {
+                const nextDataMatch = rawData.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+                if (nextDataMatch) {
+                    try { bestPayload = JSON.parse(nextDataMatch[1]); } catch(e) {}
                 }
             }
 
             if (!bestPayload) {
-                throw new Error("Could not extract character JSON from the HTML string.");
+                throw new Error("Could not reconstruct character JSON. poe.ninja may be hiding the data differently.");
             }
 
-            // 3. Filter down to a clean object optimized for local model ingestion
+            // 4. Filter down to a clean object optimized for local model ingestion
             const cleanStats = extractAIStats(bestPayload);
 
             resultBox.innerHTML = `
