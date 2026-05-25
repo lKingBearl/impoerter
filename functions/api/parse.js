@@ -1,5 +1,4 @@
 export async function onRequest(context) {
-    // Get the URL the user typed into the frontend
     const url = new URL(context.request.url);
     const targetPoeUrl = url.searchParams.get('url');
 
@@ -8,21 +7,18 @@ export async function onRequest(context) {
     }
 
     try {
-        // Fetch the data server-side where CORS doesn't apply
         const response = await fetch(targetPoeUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'RSC': '1' // <--- THE MAGIC KEY: Forces the server to return raw JSON chunks instead of HTML
             }
         });
         
-        // Grab the raw text/HTML from the page
         const data = await response.text();
 
-        // Send it back to your frontend
         return new Response(data, {
             headers: { 
                 'Content-Type': 'text/plain',
-                // Explicitly allow your frontend to read this response
                 'Access-Control-Allow-Origin': '*' 
             }
         });
