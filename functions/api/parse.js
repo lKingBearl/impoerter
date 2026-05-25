@@ -9,12 +9,12 @@ export async function onRequest(context) {
 
     try {
 
-        // If user already pasted API URL, just use it
+        // If user already gave API URL, just use it
         if (inputUrl.includes("/api/")) {
-            return await fetchAndReturn(inputUrl);
+            const data = await fetchJson(inputUrl);
+            return json(normalizeCharacter(data));
         }
 
-        // Otherwise parse profile URL
         const parsed = parsePoeNinjaUrl(inputUrl);
 
         if (!parsed) {
@@ -23,48 +23,47 @@ export async function onRequest(context) {
 
         const { account, league, character } = parsed;
 
-        // STEP 1: TRY DIRECT API (no model ID)
-        const baseApiUrl =
+        // STEP 1: Try base endpoint WITHOUT model id
+        // (this is the key fix — no HTML scraping)
+        const baseUrl =
             `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model`;
 
-        let response = await fetch(baseApiUrl, {
+        const baseResponse = await fetch(baseUrl, {
             headers: {
                 "Accept": "application/json",
                 "User-Agent": "Mozilla/5.0"
             }
         });
 
-        let text = await response.text();
+        const baseText = await baseResponse.text();
 
-        // If that fails, fallback to HTML scrape for model id
-        if (!response.ok || !isJson(text)) {
-
-            const htmlResponse = await fetch(inputUrl, {
-                headers: {
-                    "User-Agent": "Mozilla/5.0"
-                }
-            });
-
-            const html = await htmlResponse.text();
-
-            const match =
-                html.match(/model\/(\d+)/);
-
-            if (!match) {
-                return json({
-                    error: "Could not resolve model ID (site changed again)"
-                }, 500);
-            }
-
-            const modelId = match[1];
-
-            const apiUrl =
-                `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model/${modelId}`;
-
-            return await fetchAndReturn(apiUrl);
+        // If this is already JSON, use it
+        if (isJson(baseText)) {
+            return json(normalizeCharacter(JSON.parse(baseText)));
         }
 
-        return json(JSON.parse(text));
+        // STEP 2: fallback – try known working pattern discovery via search endpoint
+        const fallbackUrl =
+            `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}`;
+
+        const fallbackData = await fetchJson(fallbackUrl);
+
+        // Try to extract model id from ANY field in response
+        const modelId = extractModelId(fallbackData);
+
+        if (!modelId) {
+            return json({
+                error: "Model ID not found via API discovery",
+                hint: "Site no longer exposes model id in HTML"
+            }, 500);
+        }
+
+        const finalUrl =
+            `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model/${modelId}`;
+
+        const finalData = await fetchJson(finalUrl);
+
+        return json(normalizeCharacter(finalData));
 
     } catch (err) {
         return json({
@@ -73,7 +72,9 @@ export async function onRequest(context) {
     }
 }
 
-async function fetchAndReturn(url) {
+/* ---------------- helpers ---------------- */
+
+async function fetchJson(url) {
 
     const res = await fetch(url, {
         headers: {
@@ -85,19 +86,25 @@ async function fetchAndReturn(url) {
     const text = await res.text();
 
     if (!isJson(text)) {
-        return json({
-            error: "Response not JSON",
-            preview: text.substring(0, 2000)
-        }, 500);
+        throw new Error("Non-JSON response from API");
     }
 
-    const data = JSON.parse(text);
-
-    return json(normalizeCharacter(data));
+    return JSON.parse(text);
 }
 
 function isJson(text) {
     return text.trim().startsWith("{") || text.trim().startsWith("[");
+}
+
+/**
+ * brute-force model id search anywhere in returned payload
+ */
+function extractModelId(obj) {
+
+    const str = JSON.stringify(obj);
+    const match = str.match(/model\/(\d+)/);
+
+    return match ? match[1] : null;
 }
 
 function parsePoeNinjaUrl(url) {
@@ -118,11 +125,10 @@ function parsePoeNinjaUrl(url) {
 function normalizeCharacter(data) {
 
     return {
-
         character: {
-            name: data?.character?.name || data?.name,
-            level: data?.character?.level || data?.level,
-            class: data?.character?.class || data?.class
+            name: data?.character?.name || data?.name || null,
+            level: data?.character?.level || data?.level || null,
+            class: data?.character?.class || data?.class || null
         },
 
         stats: data?.stats || {},
@@ -133,9 +139,7 @@ function normalizeCharacter(data) {
             type: item?.typeLine,
             rarity: item?.rarity,
             implicits: item?.implicitMods || [],
-            explicits: item?.explicitMods || [],
-            crafted: item?.craftedMods || [],
-            sockets: item?.sockets || []
+            explicits: item?.explicitMods || []
         })),
 
         passives: data?.passives || [],
