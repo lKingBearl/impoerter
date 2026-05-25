@@ -4,95 +4,115 @@ export async function onRequest(context) {
     const inputUrl = requestUrl.searchParams.get("url");
 
     if (!inputUrl) {
-        return json({
-            error: "Missing URL"
-        }, 400);
+        return json({ error: "Missing URL" }, 400);
     }
 
     try {
 
-        let apiUrl = inputUrl;
+        // If user already pasted API URL, just use it
+        if (inputUrl.includes("/api/")) {
+            return await fetchAndReturn(inputUrl);
+        }
 
-        // If normal profile URL pasted
-        if (
-            inputUrl.includes("/profile/") &&
-            !inputUrl.includes("/api/")
-        ) {
+        // Otherwise parse profile URL
+        const parsed = parsePoeNinjaUrl(inputUrl);
 
-            // Fetch profile HTML SERVER SIDE
+        if (!parsed) {
+            return json({ error: "Invalid profile URL" }, 400);
+        }
+
+        const { account, league, character } = parsed;
+
+        // STEP 1: TRY DIRECT API (no model ID)
+        const baseApiUrl =
+            `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model`;
+
+        let response = await fetch(baseApiUrl, {
+            headers: {
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0"
+            }
+        });
+
+        let text = await response.text();
+
+        // If that fails, fallback to HTML scrape for model id
+        if (!response.ok || !isJson(text)) {
+
             const htmlResponse = await fetch(inputUrl, {
                 headers: {
-                    "User-Agent":
-                        "Mozilla/5.0"
+                    "User-Agent": "Mozilla/5.0"
                 }
             });
 
-            const html =
-                await htmlResponse.text();
+            const html = await htmlResponse.text();
 
-            // Find API model endpoint
             const match =
-                html.match(
-                    /\/poe2\/api\/profile\/characters\/.*?\/model\/\d+/
-                );
+                html.match(/model\/(\d+)/);
 
             if (!match) {
-
                 return json({
-                    error:
-                        "Could not locate model API URL"
+                    error: "Could not resolve model ID (site changed again)"
                 }, 500);
             }
 
-            apiUrl =
-                "https://poe.ninja" +
-                match[0];
+            const modelId = match[1];
+
+            const apiUrl =
+                `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model/${modelId}`;
+
+            return await fetchAndReturn(apiUrl);
         }
 
-        // Fetch actual JSON
-        const apiResponse =
-            await fetch(apiUrl, {
-                headers: {
-                    "Accept":
-                        "application/json",
-                    "User-Agent":
-                        "Mozilla/5.0",
-                    "Referer":
-                        "https://poe.ninja/"
-                }
-            });
-
-        const text =
-            await apiResponse.text();
-
-        let rawData;
-
-        try {
-
-            rawData =
-                JSON.parse(text);
-
-        } catch {
-
-            return json({
-                error:
-                    "Response was not JSON",
-                preview:
-                    text.substring(0, 4000)
-            }, 500);
-        }
-
-        const normalized =
-            normalizeCharacter(rawData);
-
-        return json(normalized);
+        return json(JSON.parse(text));
 
     } catch (err) {
-
         return json({
             error: err.message
         }, 500);
     }
+}
+
+async function fetchAndReturn(url) {
+
+    const res = await fetch(url, {
+        headers: {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0"
+        }
+    });
+
+    const text = await res.text();
+
+    if (!isJson(text)) {
+        return json({
+            error: "Response not JSON",
+            preview: text.substring(0, 2000)
+        }, 500);
+    }
+
+    const data = JSON.parse(text);
+
+    return json(normalizeCharacter(data));
+}
+
+function isJson(text) {
+    return text.trim().startsWith("{") || text.trim().startsWith("[");
+}
+
+function parsePoeNinjaUrl(url) {
+
+    const match = url.match(
+        /profile\/(.+?)\/(.+?)\/character\/(.+?)(#|$)/
+    );
+
+    if (!match) return null;
+
+    return {
+        account: decodeURIComponent(match[1]),
+        league: decodeURIComponent(match[2]),
+        character: decodeURIComponent(match[3])
+    };
 }
 
 function normalizeCharacter(data) {
@@ -100,79 +120,37 @@ function normalizeCharacter(data) {
     return {
 
         character: {
-            name:
-                data?.character?.name ||
-                data?.name ||
-                null,
-
-            level:
-                data?.character?.level ||
-                data?.level ||
-                null,
-
-            class:
-                data?.character?.class ||
-                data?.class ||
-                null
+            name: data?.character?.name || data?.name,
+            level: data?.character?.level || data?.level,
+            class: data?.character?.class || data?.class
         },
 
-        stats:
-            data?.stats || {},
+        stats: data?.stats || {},
 
-        items:
-            (data?.items || []).map(item => ({
+        items: (data?.items || []).map(item => ({
+            slot: item?.inventoryId,
+            name: item?.name,
+            type: item?.typeLine,
+            rarity: item?.rarity,
+            implicits: item?.implicitMods || [],
+            explicits: item?.explicitMods || [],
+            crafted: item?.craftedMods || [],
+            sockets: item?.sockets || []
+        })),
 
-                slot:
-                    item?.inventoryId,
+        passives: data?.passives || [],
+        skills: data?.skills || [],
 
-                name:
-                    item?.name,
-
-                type:
-                    item?.typeLine,
-
-                rarity:
-                    item?.rarity,
-
-                implicits:
-                    item?.implicitMods || [],
-
-                explicits:
-                    item?.explicitMods || [],
-
-                crafted:
-                    item?.craftedMods || [],
-
-                enchantments:
-                    item?.enchantMods || [],
-
-                socketedItems:
-                    item?.socketedItems || []
-            })),
-
-        passives:
-            data?.passives || [],
-
-        skills:
-            data?.skills || [],
-
-        raw:
-            data
+        raw: data
     };
 }
 
 function json(data, status = 200) {
-
-    return new Response(
-        JSON.stringify(data, null, 2),
-        {
-            status,
-            headers: {
-                "Content-Type":
-                    "application/json",
-                "Access-Control-Allow-Origin":
-                    "*"
-            }
+    return new Response(JSON.stringify(data, null, 2), {
+        status,
+        headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
         }
-    );
+    });
 }
