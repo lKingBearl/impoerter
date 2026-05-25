@@ -27,7 +27,7 @@ export async function onRequest(context) {
         } = parsed;
 
         // STEP 1:
-        // Get page HTML to discover model ID
+        // Fetch profile page HTML
         const htmlResponse = await fetch(profileUrl, {
             headers: {
                 "User-Agent": "Mozilla/5.0"
@@ -36,26 +36,28 @@ export async function onRequest(context) {
 
         const html = await htmlResponse.text();
 
-        // Find model endpoint in HTML
-        const modelMatch = html.match(
-            /\/api\/profile\/characters\/.*?\/model\/(\d+)/
-        );
+        // STEP 2:
+        // Much simpler regex
+        const modelMatch = html.match(/model\/(\d+)/);
 
+        // DEBUGGING
         if (!modelMatch) {
+
             return json({
-                error: "Model ID not found"
+                error: "Model ID not found",
+                debug: html.substring(0, 5000)
             }, 500);
         }
 
         const modelId = modelMatch[1];
 
-        // STEP 2:
-        // Build actual API URL
+        // STEP 3:
+        // Build API URL
         const apiUrl =
             `https://poe.ninja/poe2/api/profile/characters/${account}/${league}/${character}/model/${modelId}`;
 
-        // STEP 3:
-        // Fetch actual structured data
+        // STEP 4:
+        // Fetch actual structured JSON
         const apiResponse = await fetch(apiUrl, {
             headers: {
                 "Accept": "application/json",
@@ -63,10 +65,21 @@ export async function onRequest(context) {
             }
         });
 
+        if (!apiResponse.ok) {
+            return json({
+                error: "Failed to fetch API",
+                status: apiResponse.status,
+                apiUrl
+            }, 500);
+        }
+
         const rawData = await apiResponse.json();
 
-        // STEP 4:
-        // Normalize for LLMs
+        // DEBUG FIRST
+        // return json(rawData);
+
+        // STEP 5:
+        // Normalize for LLM use
         const normalized = normalizeCharacter(rawData);
 
         return json(normalized);
@@ -74,7 +87,8 @@ export async function onRequest(context) {
     } catch (err) {
 
         return json({
-            error: err.message
+            error: err.message,
+            stack: err.stack
         }, 500);
     }
 }
@@ -90,9 +104,9 @@ function parsePoeNinjaUrl(url) {
     }
 
     return {
-        account: match[1],
-        league: match[2],
-        character: match[3]
+        account: decodeURIComponent(match[1]),
+        league: decodeURIComponent(match[2]),
+        character: decodeURIComponent(match[3])
     };
 }
 
@@ -101,42 +115,93 @@ function normalizeCharacter(data) {
     return {
 
         character: {
-            name: data?.character?.name,
-            level: data?.character?.level,
-            class: data?.character?.class
+            name:
+                data?.character?.name ||
+                data?.name,
+
+            level:
+                data?.character?.level ||
+                data?.level,
+
+            class:
+                data?.character?.class ||
+                data?.class
         },
 
         defence: {
-            life: data?.stats?.life,
-            mana: data?.stats?.mana,
-            energyShield: data?.stats?.energyShield,
-            movementSpeed: data?.stats?.movementSpeed,
-            armour: data?.stats?.armour,
-            evasion: data?.stats?.evasion
+            life:
+                data?.stats?.life,
+
+            mana:
+                data?.stats?.mana,
+
+            energyShield:
+                data?.stats?.energyShield,
+
+            movementSpeed:
+                data?.stats?.movementSpeed,
+
+            armour:
+                data?.stats?.armour,
+
+            evasion:
+                data?.stats?.evasion
         },
 
         resistances: {
-            fire: data?.stats?.fireResistance,
-            cold: data?.stats?.coldResistance,
-            lightning: data?.stats?.lightningResistance,
-            chaos: data?.stats?.chaosResistance
+            fire:
+                data?.stats?.fireResistance,
+
+            cold:
+                data?.stats?.coldResistance,
+
+            lightning:
+                data?.stats?.lightningResistance,
+
+            chaos:
+                data?.stats?.chaosResistance
         },
 
         items: (data?.items || []).map(item => ({
-            slot: item?.inventoryId,
-            name: item?.name,
-            type: item?.typeLine,
-            rarity: item?.rarity,
 
-            implicits: item?.implicitMods || [],
-            explicits: item?.explicitMods || [],
+            slot:
+                item?.inventoryId,
 
-            socketedItems: item?.socketedItems || []
+            name:
+                item?.name,
+
+            type:
+                item?.typeLine,
+
+            rarity:
+                item?.rarity,
+
+            implicits:
+                item?.implicitMods || [],
+
+            explicits:
+                item?.explicitMods || [],
+
+            crafted:
+                item?.craftedMods || [],
+
+            enchantments:
+                item?.enchantMods || [],
+
+            socketedItems:
+                item?.socketedItems || []
         })),
 
-        passives: data?.passives || [],
+        passives:
+            data?.passives || [],
 
-        skills: data?.skills || []
+        skills:
+            data?.skills || [],
+
+        raw: {
+            modelId:
+                data?.modelId
+        }
     };
 }
 
