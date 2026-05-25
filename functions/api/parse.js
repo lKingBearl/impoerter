@@ -14,23 +14,31 @@ export async function onRequest(context) {
         const response = await fetch(apiUrl, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Referer": "https://poe.ninja/",
+                "Origin": "https://poe.ninja"
             }
         });
 
-        if (!response.ok) {
+        // DEBUGGING RESPONSE
+        const text = await response.text();
+
+        // Try parsing JSON safely
+        let rawData;
+
+        try {
+            rawData = JSON.parse(text);
+        } catch {
 
             return json({
-                error: "API request failed",
-                status: response.status
+                error: "Response was not JSON",
+                status: response.status,
+                contentType: response.headers.get("content-type"),
+                preview: text.substring(0, 4000)
             }, 500);
         }
 
-        const rawData = await response.json();
-
-        // DEBUG FIRST
-        // return json(rawData);
-
+        // NORMALIZE DATA
         const normalized = normalizeCharacter(rawData);
 
         return json(normalized);
@@ -38,7 +46,8 @@ export async function onRequest(context) {
     } catch (err) {
 
         return json({
-            error: err.message
+            error: err.message,
+            stack: err.stack
         }, 500);
     }
 }
@@ -50,32 +59,39 @@ function normalizeCharacter(data) {
         character: {
             name:
                 data?.character?.name ||
-                data?.name,
+                data?.name ||
+                null,
 
             level:
                 data?.character?.level ||
-                data?.level,
+                data?.level ||
+                null,
 
             class:
                 data?.character?.class ||
-                data?.class
+                data?.class ||
+                null
         },
 
-        stats: data?.stats || {},
+        stats:
+            data?.stats || {},
 
         items: (data?.items || []).map(item => ({
 
             slot:
-                item?.inventoryId,
+                item?.inventoryId || null,
 
             name:
-                item?.name,
+                item?.name || null,
 
             baseType:
-                item?.typeLine,
+                item?.typeLine || null,
 
             rarity:
-                item?.rarity,
+                item?.rarity || null,
+
+            itemLevel:
+                item?.ilvl || null,
 
             implicits:
                 item?.implicitMods || [],
@@ -88,6 +104,9 @@ function normalizeCharacter(data) {
 
             enchantments:
                 item?.enchantMods || [],
+
+            fractured:
+                item?.fracturedMods || [],
 
             properties:
                 item?.properties || [],
@@ -106,7 +125,10 @@ function normalizeCharacter(data) {
             data?.passives || [],
 
         skills:
-            data?.skills || []
+            data?.skills || [],
+
+        raw:
+            data
     };
 }
 
