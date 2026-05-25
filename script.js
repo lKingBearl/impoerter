@@ -16,16 +16,16 @@ document.addEventListener("DOMContentLoaded", () => {
         resultBox.style.color = "#333";
 
         try {
-            // Call your new Cloudflare proxy function
             const response = await fetch(`/api/parse?url=${encodeURIComponent(url)}`);
             
+            // This grabs the exact error code from the server instead of a generic message
             if (!response.ok) {
-                throw new Error("Failed to fetch from proxy");
+                const errorText = await response.text();
+                throw new Error(`Status ${response.status} - ${errorText || response.statusText}`);
             }
 
             const rawData = await response.text();
 
-            // Success! Displaying the first 1000 characters so it doesn't crash the browser
             resultBox.innerHTML = `
                 <strong>Fetch Successful!</strong><br><br>
                 Raw Data Output (Truncated):<br><br>
